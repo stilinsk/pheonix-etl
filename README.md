@@ -342,3 +342,142 @@ ORDER BY MOVIE_ID, VALID_FROM;
 | `Cursor is closed` | You ran `conn.close()` — reconnect first |
 | SSL `RecursionError` with Snowflake connector | Use Python 3.11 or 3.12, not 3.14 |
 | `pip install` fails on corporate network | Add `--trusted-host pypi.org --trusted-host pypi.python.org --trusted-host files.pythonhosted.org` |
+
+
+
+
+
+
+##### SSMS
+
+# SSIS Financial Transactions ETL — Lab Setup Guide
+
+This lab walks you through building an end-to-end SSIS package that extracts financial data from **three sources** (SQL Server, Excel, CSV), transforms it (currency conversion, lookups), and loads it into a data warehouse.
+
+Before you build the SSIS package, you need to set up all the source data and the destination warehouse. Follow each section in order.
+
+---
+
+## 1. Source Database Setup
+
+Open SSMS, connect to your local SQL Server instance, and run the following scripts.
+
+### 1.1 Create the Source Database
+
+```sql
+CREATE DATABASE financial_transactions_db;
+GO
+
+USE financial_transactions_db;
+GO
+```
+
+### 1.2 Create the Financial Transactions Table
+
+```sql
+CREATE TABLE financial_transactions (
+    transaction_id INT PRIMARY KEY,
+    customer_id    INT,
+    supplier_name  VARCHAR(50),
+    transaction_date DATE,
+    amount         DECIMAL(10, 2),
+    currency       VARCHAR(10)
+);
+```
+
+### 1.3 Insert Sample Transaction Data
+
+```sql
+INSERT INTO financial_transactions
+    (transaction_id, customer_id, supplier_name, transaction_date, amount, currency)
+VALUES
+    (1, 101, 'ABC Corp',    '2024-01-15', 1000.00, 'USD'),
+    (2, 102, 'XYZ Ltd',     '2024-01-20', 1500.50, 'EUR'),
+    (3, 103, 'Global Inc',  '2024-02-05', 2000.00, 'GBP'),
+    (4, 104, 'ABC Corp',    '2024-02-10',  500.25, 'USD');
+```
+
+### 1.4 Create the Customer Details Table
+
+```sql
+CREATE TABLE customer_details (
+    customer_id   INT PRIMARY KEY,
+    customer_name VARCHAR(50),
+    email         VARCHAR(100),
+    phone         VARCHAR(20)
+);
+```
+
+### 1.5 Insert Sample Customer Data
+
+```sql
+INSERT INTO customer_details
+    (customer_id, customer_name, email, phone)
+VALUES
+    (101, 'John Doe',      'john.doe@example.com',      '123-456-7890'),
+    (102, 'Jane Smith',    'jane.smith@example.com',     '234-567-8901'),
+    (103, 'Mike Johnson',  'mike.johnson@example.com',   '345-678-9012'),
+    (104, 'Emily Davis',   'emily.davis@example.com',    '456-789-0123');
+```
+
+> **Quick check:** Run `SELECT * FROM financial_transactions` and `SELECT * FROM customer_details` — you should see 4 rows in each.
+
+---
+
+## 2. Excel File Setup — Exchange Rates
+
+Create a file called **`exchange_rates.xlsx`** with a sheet named **Rates** containing this data:
+
+| from_currency | to_currency | exchange_rate | effective_date |
+|:---:|:---:|:---:|:---:|
+| USD | USD | 1.00 | 2024-01-01 |
+| EUR | USD | 0.89 | 2024-01-01 |
+| GBP | USD | 1.30 | 2024-01-01 |
+
+Save it to a known location (e.g. `C:\SSISLab\exchange_rates.xlsx`). You'll point your SSIS Excel Connection Manager here later.
+
+---
+
+## 3. CSV File Setup — Supplier List
+
+Create a file called **`suppliers.csv`** with the following content:
+
+```
+supplier_id,supplier_name,contact_name,phone
+201,ABC Corp,Alice Brown,567-890-1234
+202,XYZ Ltd,Bob White,678-901-2345
+203,Global Inc,Carol Green,789-012-3456
+```
+
+Save it to the same folder (e.g. `C:\SSISLab\suppliers.csv`). You'll point your SSIS Flat File Connection Manager here later.
+
+---
+
+## 4. Data Warehouse Setup
+
+Back in SSMS, run the following to create your destination.
+
+### 4.1 Create the Warehouse Database
+
+```sql
+CREATE DATABASE financial_data_warehouse;
+GO
+
+USE financial_data_warehouse;
+GO
+```
+
+### 4.2 Create the Financial Analysis Destination Table
+
+This is where your SSIS package will load the final, transformed data.
+
+```sql
+CREATE TABLE financial_analysis (
+    transaction_id   INT PRIMARY KEY,
+    customer_name    VARCHAR(50),
+    supplier_name    VARCHAR(50),
+    transaction_date DATE,
+    amount_usd       DECIMAL(10, 2),
+    supplier_phone   VARCHAR(20)
+);
+```
